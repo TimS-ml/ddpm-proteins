@@ -107,6 +107,10 @@ class Mish(nn.Module):
     def forward(self, x):
         return x * torch.tanh(F.softplus(x))
 
+'''
+Note: in upsample and downsample bock, the input and output dim doesn't change
+'''
+
 class Upsample(nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -288,8 +292,21 @@ class LinearAttention(nn.Module):
         return self.to_out(out)
 
 # model
-
+# No need to add time as input param in UNet, but time shoud be included in decoding
 class Unet(nn.Module):
+    '''
+    Upsample
+    Downsample
+    mlp
+    middle block with attention
+    final_conv
+
+    Note: in this implementation 
+        Residual block got t, Unsameple and Downsample don't
+
+    xxSample got fill embedding param of residual block through:
+        get_resnet_block = partial(ResnetBlock, time_emb_dim = dim, hybrid_dim_conv = hybrid_dim_conv)
+    '''
     def __init__(
         self,
         dim,
@@ -311,6 +328,8 @@ class Unet(nn.Module):
         in_out = list(zip(dims[:-1], dims[1:]))
 
         self.time_pos_emb = SinusoidalPosEmb(dim)
+
+        # https://pytorch.org/docs/master/generated/torch.nn.Mish.html#torch.nn.Mish
         self.mlp = nn.Sequential(
             nn.Linear(dim, dim * 4),
             Mish(),
@@ -320,9 +339,13 @@ class Unet(nn.Module):
         self.downs = nn.ModuleList([])
         self.ups = nn.ModuleList([])
         num_resolutions = len(in_out)
-
+        
+        # important
         get_resnet_block = partial(ResnetBlock, time_emb_dim = dim, hybrid_dim_conv = hybrid_dim_conv)
 
+        '''
+        Downsample
+        '''
         for ind, (dim_in, dim_out) in enumerate(in_out):
             is_first = ind == 0
             is_last = ind >= (num_resolutions - 1)
@@ -339,6 +362,9 @@ class Unet(nn.Module):
         self.mid_attn = Residual(LinearAttention(mid_dim))
         self.mid_block2 = get_resnet_block(mid_dim, mid_dim)
 
+        '''
+        Unsameple
+        '''
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
             is_last = ind >= (num_resolutions - 1)
 
